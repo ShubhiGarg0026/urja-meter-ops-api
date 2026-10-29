@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Urja Meter Ops 2.0 | Flock Energy Hub</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .collapsible-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+        }
+        .collapsible-content.expanded {
+            max-height: 2000px;
+            transition: max-height 0.5s ease-in;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen antialiased">
+    <!-- Top Navigation -->
+    <nav class="border-b border-slate-800 bg-slate-950/80 backdrop-blur px-8 py-4 flex justify-between items-center sticky top-0 z-50">
+        <div class="flex items-center space-x-3">
+            <span class="text-2xl p-2 bg-blue-500/10 rounded-lg text-blue-400">⚡</span>
+            <div>
+                <h1 class="text-lg font-bold text-white tracking-wide">Urja Modern Ops Hub</h1>
+                <p class="text-xs text-slate-400">Live Grid Hierarchy & Telemetry Service</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-4">
+            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <span class="w-2 h-2 mr-1.5 bg-emerald-400 rounded-full animate-pulse"></span> Live Stream Active
+            </span>
+            <a href="/docs" target="_blank" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2 rounded-lg font-semibold border border-slate-700 transition">Swagger API</a>
+            <button onclick="triggerSync()" id="syncBtn" class="text-xs bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold px-4 py-2 rounded-lg shadow-md transition">
+                🔄 Resync Live Portal
+            </button>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto p-8 space-y-8">
+        <!-- Live Metric Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div class="bg-slate-800/60 p-6 rounded-2xl border border-slate-700/60 backdrop-blur">
+                <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Total Fleet Meters</p>
+                <p class="text-4xl font-extrabold text-white mt-2" id="metricTotal">-</p>
+            </div>
+            <div class="bg-slate-800/60 p-6 rounded-2xl border border-emerald-500/30 backdrop-blur">
+                <p class="text-xs font-medium text-emerald-400 uppercase tracking-wider">Active / Installed</p>
+                <p class="text-4xl font-extrabold text-emerald-400 mt-2" id="metricInstalled">-</p>
+            </div>
+            <div class="bg-slate-800/60 p-6 rounded-2xl border border-rose-500/30 backdrop-blur">
+                <p class="text-xs font-medium text-rose-400 uppercase tracking-wider">Fault Anomaly</p>
+                <p class="text-4xl font-extrabold text-rose-400 mt-2" id="metricFaulty">-</p>
+            </div>
+            <div class="bg-slate-800/60 p-6 rounded-2xl border border-amber-500/30 backdrop-blur">
+                <p class="text-xs font-medium text-amber-400 uppercase tracking-wider">Decommissioned</p>
+                <p class="text-4xl font-extrabold text-amber-400 mt-2" id="metricDecom">-</p>
+            </div>
+        </div>
+
+        <!-- Section Tabs -->
+        <div class="flex space-x-4 border-b border-slate-800 pb-3">
+            <button onclick="switchTab('hierarchy')" id="tabHierarchyBtn" class="text-sm font-semibold px-4 py-2 rounded-lg bg-blue-600 text-white transition">
+                🌳 Network Hierarchy Visual Explorer
+            </button>
+            <button onclick="switchTab('telemetry')" id="tabTelemetryBtn" class="text-sm font-semibold px-4 py-2 rounded-lg text-slate-400 hover:text-white transition">
+                📋 Live Telemetry Table & Charts
+            </button>
+        </div>
+
+        <!-- TAB 1: Network Hierarchy Visual Explorer -->
+        <div id="hierarchySection" class="space-y-6">
+            <div class="bg-slate-800/60 p-6 rounded-2xl border border-slate-700/60">
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h2 class="text-base font-bold text-white flex items-center gap-2">
+                            <span>🏛️ Grid Distribution Hierarchy</span>
+                        </h2>
+                        <p class="text-xs text-slate-400 mt-1">Reconstructed topological tree: Grid Substation $\rightarrow$ Feeders $\rightarrow$ Distribution Transformers (DTs) $\rightarrow$ Smart Meters</p>
+                    </div>
+                    <span class="text-xs bg-slate-700/50 text-slate-300 px-3 py-1.5 rounded-lg border border-slate-600 font-mono" id="dtCountBadge">0 DT Nodes</span>
+                </div>
+                <div id="treeContainer" class="space-y-4 pt-2">
+                    <p class="text-xs text-slate-400 animate-pulse">Loading real-time network topology...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 2: Live Telemetry Table & Charts -->
+        <div id="telemetrySection" class="space-y-8 hidden">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="bg-slate-800/60 p-6 rounded-2xl border border-slate-700/60">
+                    <h3 class="text-sm font-semibold text-slate-300 mb-4">Fleet Operational Health Distribution</h3>
+                    <div class="h-64 flex justify-center">
+                        <canvas id="healthChart"></canvas>
+                    </div>
+                </div>
+                <div class="bg-slate-800/60 p-6 rounded-2xl border border-slate-700/60">
+                    <h3 class="text-sm font-semibold text-slate-300 mb-4">Manufacturer Distribution</h3>
+                    <div class="h-64 flex justify-center">
+                        <canvas id="makeChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-slate-800/60 rounded-2xl border border-slate-700/60 overflow-hidden">
+                <div class="p-5 border-b border-slate-700/60 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                        <h2 class="text-base font-bold text-white">Live Telemetry Explorer</h2>
+                        <p class="text-xs text-slate-400">Sub-millisecond query layer with instantaneous attribute filtering</p>
+                    </div>
+                    <input type="text" id="searchInput" onkeyup="filterMeters()" placeholder="Filter by Meter, Serial, Make or DT..." 
+                           class="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg px-4 py-2 w-72 focus:outline-none focus:border-blue-500">
+                </div>
+
+                <div class="overflow-x-auto max-h-[500px]">
+                    <table class="w-full text-left text-xs" id="metersTable">
+                        <thead class="bg-slate-900/90 text-slate-400 uppercase tracking-wider sticky top-0 border-b border-slate-700">
+                            <tr>
+                                <th class="px-5 py-3.5">Meter ID</th>
+                                <th class="px-5 py-3.5">Serial No</th>
+                                <th class="px-5 py-3.5">Manufacturer</th>
+                                <th class="px-5 py-3.5">Phase</th>
+                                <th class="px-5 py-3.5">Status</th>
+                                <th class="px-5 py-3.5">Distribution Transformer (DT)</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-700/50"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        let allMeters = [];
+        let healthChartInstance = null;
+        let makeChartInstance = null;
+
+        function switchTab(tab) {
+            const hSec = document.getElementById('hierarchySection');
+            const tSec = document.getElementById('telemetrySection');
+            const hBtn = document.getElementById('tabHierarchyBtn');
+            const tBtn = document.getElementById('tabTelemetryBtn');
+
+            if (tab === 'hierarchy') {
+                hSec.classList.remove('hidden');
+                tSec.classList.add('hidden');
+                hBtn.className = "text-sm font-semibold px-4 py-2 rounded-lg bg-blue-600 text-white transition";
+                tBtn.className = "text-sm font-semibold px-4 py-2 rounded-lg text-slate-400 hover:text-white transition";
+            } else {
+                hSec.classList.add('hidden');
+                tSec.classList.remove('hidden');
+                tBtn.className = "text-sm font-semibold px-4 py-2 rounded-lg bg-blue-600 text-white transition";
+                hBtn.className = "text-sm font-semibold px-4 py-2 rounded-lg text-slate-400 hover:text-white transition";
+            }
+        }
+
+        async function fetchLiveStats() {
+            try {
+                const res = await fetch('/api/v1/live-stats');
+                const stats = await res.json();
+                document.getElementById('metricTotal').innerText = stats.total;
+                document.getElementById('metricInstalled').innerText = stats.installed;
+                document.getElementById('metricFaulty').innerText = stats.faulty;
+                document.getElementById('metricDecom').innerText = stats.decommissioned;
+            } catch (e) {
+                console.error("Live stats fetch error:", e);
+            }
+        }
+
+        async function fetchHierarchyTree() {
+            try {
+                const res = await fetch('/api/v1/hierarchy');
+                const data = await res.json();
+                renderHierarchy(data);
+            } catch (e) {
+                console.error("Hierarchy fetch error:", e);
+            }
+        }
+
+        function renderHierarchy(tree) {
+            const container = document.getElementById('treeContainer');
+            if (!tree || !tree.children || tree.children.length === 0) {
+                container.innerHTML = '<p class="text-xs text-slate-400">No hierarchy nodes available. Resync portal.</p>';
+                return;
+            }
+
+            let totalDts = 0;
+            let html = `
+                <div class="p-4 bg-slate-900/80 rounded-xl border border-slate-700/60 mb-4 flex items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <span class="text-xl">⚡</span>
+                        <div>
+                            <h4 class="text-sm font-bold text-white">${tree.name}</h4>
+                            <p class="text-[11px] text-slate-400">${tree.children.length} Primary Distribution Feeders Active</p>
+                        </div>
+                    </div>
+                    <span class="px-2.5 py-1 text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full">Grid Online</span>
+                </div>
+            `;
+
+            tree.children.forEach((feeder, fIdx) => {
+                totalDts += feeder.total_transformers;
+                html += `
+                    <div class="border border-slate-700/60 rounded-xl bg-slate-800/40 overflow-hidden mb-3">
+                        <div onclick="toggleAccordion('feeder-${fIdx}')" class="p-3.5 bg-slate-800/80 hover:bg-slate-800 cursor-pointer flex justify-between items-center transition">
+                            <div class="flex items-center space-x-2">
+                                <span class="text-blue-400 font-bold">↳</span>
+                                <span class="text-xs font-bold text-slate-200">🔌 ${feeder.name}</span>
+                                <span class="text-[10px] bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">${feeder.total_transformers} Transformers</span>
+                            </div>
+                            <span class="text-xs text-slate-400 font-mono" id="icon-feeder-${fIdx}">+ Expand Feeder</span>
+                        </div>
+                        <div id="feeder-${fIdx}" class="collapsible-content p-3 space-y-3 bg-slate-900/50">
+                `;
+
+                feeder.children.forEach((dt, dtIdx) => {
+                    const healthPct = dt.total_meters > 0 ? Math.round((dt.active_count / dt.total_meters) * 100) : 100;
+                    html += `
+                        <div class="ml-4 border border-slate-800 rounded-lg bg-slate-800/60 overflow-hidden">
+                            <div onclick="toggleAccordion('dt-${fIdx}-${dtIdx}')" class="p-3 hover:bg-slate-700/40 cursor-pointer flex justify-between items-center transition">
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-indigo-400 font-bold">↳</span>
+                                    <span class="text-xs font-mono font-bold text-indigo-300">🗄️ ${dt.dt_node}</span>
+                                    <span class="text-[10px] bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 px-2 py-0.5 rounded-full">${dt.total_meters} Meters Connected</span>
+                                    <span class="text-[10px] ${healthPct === 100 ? 'text-emerald-400' : 'text-amber-400'}">(${healthPct}% Health)</span>
+                                </div>
+                                <span class="text-[11px] text-slate-400" id="icon-dt-${fIdx}-${dtIdx}">+ View Connected Meters</span>
+                            </div>
+                            <div id="dt-${fIdx}-${dtIdx}" class="collapsible-content p-3 bg-slate-950/70 border-t border-slate-800">
+                                <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3 text-[11px] text-slate-400 pb-2 border-b border-slate-800">
+                                    <div>Active: <span class="text-emerald-400 font-bold">${dt.active_count}</span></div>
+                                    <div>Faults: <span class="text-rose-400 font-bold">${dt.fault_count}</span></div>
+                                    <div>Single-Phase: <span class="text-slate-300 font-bold">${dt.single_phase_count}</span></div>
+                                    <div>Three-Phase: <span class="text-slate-300 font-bold">${dt.three_phase_count}</span></div>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                    ${(dt.meters || []).map(m => `
+                                        <div class="p-2 bg-slate-900 border border-slate-800 rounded text-[11px] flex justify-between items-center">
+                                            <div>
+                                                <div class="font-mono text-blue-400 font-semibold">${m.meter}</div>
+                                                <div class="text-[10px] text-slate-400">${m.make} • ${m.phase}</div>
+                                            </div>
+                                            <span class="px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                                                m.status === 'Installed' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'
+                                            }">${m.status}</span>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                html += `</div></div>`;
+            });
+
+            document.getElementById('dtCountBadge').innerText = `${totalDts} Total DT Nodes`;
+            container.innerHTML = html;
+        }
+
+        function toggleAccordion(id) {
+            const el = document.getElementById(id);
+            const icon = document.getElementById('icon-' + id);
+            if (el.classList.contains('expanded')) {
+                el.classList.remove('expanded');
+                if (icon) icon.innerText = icon.innerText.replace('−', '+');
+            } else {
+                el.classList.add('expanded');
+                if (icon) icon.innerText = icon.innerText.replace('+', '−');
+            }
+        }
+
+        async function loadMeters() {
+            try {
+                const res = await fetch('/api/v1/meters');
+                const json = await res.json();
+                allMeters = json.data || [];
+                renderTable(allMeters);
+                renderCharts(allMeters);
+            } catch (e) {
+                console.error("Telemetry load error:", e);
+            }
+        }
+
+        function renderTable(meters) {
+            const tbody = document.querySelector('#metersTable tbody');
+            tbody.innerHTML = meters.map(m => `
+                <tr class="hover:bg-slate-700/30 transition">
+                    <td class="px-5 py-3.5 font-mono text-blue-400 font-semibold">${m.meter || ''}</td>
+                    <td class="px-5 py-3.5 font-mono text-slate-300">${m.serial || ''}</td>
+                    <td class="px-5 py-3.5 text-slate-300">${m.make || ''}</td>
+                    <td class="px-5 py-3.5 text-slate-300">${m.phase || ''}</td>
+                    <td class="px-5 py-3.5">
+                        <span class="px-2.5 py-1 rounded-full text-[11px] font-semibold ${
+                            (m.status || '').toLowerCase() === 'installed' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                            (m.status || '').toLowerCase().includes('fault') ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' :
+                            'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                        }">${m.status || 'Unknown'}</span>
+                    </td>
+                    <td class="px-5 py-3.5 font-mono text-indigo-400">${m.dt || ''}</td>
+                </tr>
+            `).join('');
+        }
+
+        function filterMeters() {
+            const term = document.getElementById('searchInput').value.toLowerCase();
+            const filtered = allMeters.filter(m => 
+                (m.meter || '').toLowerCase().includes(term) ||
+                (m.serial || '').toLowerCase().includes(term) ||
+                (m.make || '').toLowerCase().includes(term) ||
+                (m.dt || '').toLowerCase().includes(term) ||
+                (m.status || '').toLowerCase().includes(term)
+            );
+            renderTable(filtered);
+        }
+
+        function renderCharts(meters) {
+            const counts = { Installed: 0, Faulty: 0, Decommissioned: 0 };
+            meters.forEach(m => {
+                const s = m.status || 'Installed';
+                counts[s] = (counts[s] || 0) + 1;
+            });
+
+            if (healthChartInstance) healthChartInstance.destroy();
+            healthChartInstance = new Chart(document.getElementById('healthChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(counts),
+                    datasets: [{
+                        data: Object.values(counts),
+                        backgroundColor: ['#10b981', '#f43f5e', '#f59e0b'],
+                        borderWidth: 0
+                    }]
+                },
+                options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8' } } } }
+            });
+
+            const makeCounts = {};
+            meters.forEach(m => {
+                const mk = m.make || 'Generic';
+                makeCounts[mk] = (makeCounts[mk] || 0) + 1;
+            });
+
+            if (makeChartInstance) makeChartInstance.destroy();
+            makeChartInstance = new Chart(document.getElementById('makeChart'), {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(makeCounts),
+                    datasets: [{
+                        label: 'Meters Count',
+                        data: Object.values(makeCounts),
+                        backgroundColor: '#6366f1',
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { ticks: { color: '#94a3b8' }, grid: { display: false } },
+                        y: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } }
+                    }
+                }
+            });
+        }
+
+        async function triggerSync() {
+            const btn = document.getElementById('syncBtn');
+            btn.innerText = 'Syncing...';
+            btn.disabled = true;
+            try {
+                await fetch('/api/v1/sync', { method: 'POST' });
+                await fetchLiveStats();
+                await fetchHierarchyTree();
+                await loadMeters();
+            } catch (e) {
+                alert('Sync failed');
+            } finally {
+                btn.innerText = '🔄 Resync Live Portal';
+                btn.disabled = false;
+            }
+        }
+
+        // Initialize dashboard
+        fetchLiveStats();
+        fetchHierarchyTree();
+        loadMeters();
+
+        // Real-time automatic background poll every 10 seconds
+        setInterval(fetchLiveStats, 10000);
+    </script>
+</body>
+</html>
